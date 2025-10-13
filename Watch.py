@@ -1,27 +1,64 @@
-# Example file showing a basic pygame "game loop"
 import pygame
+from datetime import datetime
 
-# pygame setup
-pygame.init()
-screen = pygame.display.set_mode((600, 600))
-clock = pygame.time.Clock()
-running = True
+# --------------------------
+# Initialize Pygame
+# --------------------------
+pygame.init();
+
+# Window size
+WIDTH, HEIGHT = 600, 600;
+screen = pygame.display.set_mode((WIDTH, HEIGHT));
+pygame.display.set_caption("Trife");
+
+# Clock for controlling FPS
+clock = pygame.time.Clock();
+
+# --------------------------
+# Function to draw digital clock
+# --------------------------
+def digitalClock(screen, blink):
+    currentTime = datetime.now();
+    # Use colons when blinking is ON, otherwise spaces
+    if blink:
+        time_str = currentTime.strftime("%I:%M:%S %p");
+    else:
+        time_str = currentTime.strftime("%I %M %S %p");
+
+    # Font and color
+    font = pygame.font.Font(None, 120);
+    text = font.render(time_str, True, (255, 255, 255));
+    text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2));
+
+    # Draw text on screen
+    screen.blit(text, text_rect);
+
+# --------------------------
+# Main Loop
+# --------------------------
+running = True;
+blink = True;
+blinkTime = 0;
 
 while running:
-    # poll for events
-    # pygame.QUIT event means the user clicked X to close your window
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            running = False
+            running = False;
 
-    # fill the screen with a color to wipe away anything from last frame
-    screen.fill("white")
+    screen.fill("black");
 
-    # RENDER YOUR GAME HERE
+    # Add elapsed time
+    blinkTime += clock.get_time();
 
-    # flip() the display to put your work on screen
-    pygame.display.flip()
+    # Toggle colon every 3 seconds
+    if blinkTime > 450:
+        blink = not blink;
+        blinkTime = 0;  # reset timer
 
-    clock.tick(60)  # limits FPS to 60
+    # Draw the digital clock
+    digitalClock(screen, blink);
 
+    # Refresh screen
+    pygame.display.flip();
+    clock.tick(60);
 pygame.quit()
