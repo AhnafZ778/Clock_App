@@ -8,6 +8,10 @@ pygame.init();
 
 # Window size
 WIDTH, HEIGHT = 600, 600;
+background=pygame.image.load("bg.jpg");
+background=pygame.transform.scale(background,(WIDTH, HEIGHT));
+
+
 screen = pygame.display.set_mode((WIDTH, HEIGHT));
 pygame.display.set_caption("Trife");
 
@@ -46,21 +50,21 @@ while running:
         if event.type == pygame.QUIT:
             running = False;
 
-    screen.fill("black");
+        screen.blit(background, (0, 0));
 
-    # Add elapsed time
-    blinkTime += clock.get_time();
+        # Add elapsed time
+        blinkTime += clock.get_time();
 
-    # Toggle colon every 3 seconds
-    if blinkTime > 440:
-        blink = not blink;
-        blinkTime = 0 ; # reset timer
+        # Toggle colon every 3 seconds
+        if blinkTime > 440:
+            blink = not blink;
+            blinkTime = 0 ; # reset timer
 
-    # Draw the digital clock
-    digitalClock(screen, blink);
+        # Draw the digital clock
+        digitalClock(screen, blink);
 
-    # Refresh screen
-    pygame.display.flip();
-    clock.tick(60);
+        # Refresh screen
+        pygame.display.flip();
+        clock.tick(60);
 
 pygame.quit();
