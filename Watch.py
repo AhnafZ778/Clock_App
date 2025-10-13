@@ -19,6 +19,7 @@ clock = pygame.time.Clock();
 # --------------------------
 def digitalClock(screen, blink):
     currentTime = datetime.now();
+
     # Use colons when blinking is ON, otherwise spaces
     if blink:
         time_str = currentTime.strftime("%I:%M:%S %p");
@@ -51,9 +52,9 @@ while running:
     blinkTime += clock.get_time();
 
     # Toggle colon every 3 seconds
-    if blinkTime > 450:
+    if blinkTime > 440:
         blink = not blink;
-        blinkTime = 0;  # reset timer
+        blinkTime = 0 ; # reset timer
 
     # Draw the digital clock
     digitalClock(screen, blink);
@@ -61,4 +62,5 @@ while running:
     # Refresh screen
     pygame.display.flip();
     clock.tick(60);
-pygame.quit()
+
+pygame.quit();
