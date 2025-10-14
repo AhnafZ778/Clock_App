@@ -56,23 +56,24 @@ while running:
                 background = pygame.image.load("bg.jpg")
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
             elif event.key == pygame.K_1:
-                background = pygame.image.load("bg_2.jpg")
+                background = pygame.image.load("bg_2.jpeg")
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
-        screen.blit(background, (0, 0))
+                
+    screen.blit(background, (0, 0))
 
-        # Add elapsed time
-        blinkTime += clock.get_time()
+    # Add elapsed time
+    blinkTime += clock.get_time()
 
-        # Toggle colon every 3 seconds
-        if blinkTime > 440:
-            blink = not blink
-            blinkTime = 0 # reset timer
+    # Toggle colon every 3 seconds
+    if blinkTime > 440:
+        blink = not blink
+        blinkTime = 0 # reset timer
 
-        # Draw the digital clock
-        digitalClock(screen, blink)
+    # Draw the digital clock
+    digitalClock(screen, blink)
 
-        # Refresh screen
-        pygame.display.flip()
-        clock.tick(60)
+    # Refresh screen
+    pygame.display.flip()
+    clock.tick(60)
 
 pygame.quit()
