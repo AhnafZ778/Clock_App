@@ -7,7 +7,7 @@ from datetime import datetime
 pygame.init()
 
 # Window size
-WIDTH, HEIGHT = 600, 600;
+WIDTH, HEIGHT = 600, 600
 background=pygame.image.load("bg.jpg")
 background=pygame.transform.scale(background,(WIDTH, HEIGHT))
 
@@ -49,7 +49,15 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_q:
+                running = False
+            elif event.key == pygame.K_0:
+                background = pygame.image.load("bg.jpg")
+                background = pygame.transform.scale(background, (WIDTH, HEIGHT))
+            elif event.key == pygame.K_1:
+                background = pygame.image.load("bg_2.jpg")
+                background = pygame.transform.scale(background, (WIDTH, HEIGHT))
         screen.blit(background, (0, 0))
 
         # Add elapsed time
