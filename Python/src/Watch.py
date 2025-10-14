@@ -11,7 +11,7 @@ pygame.init()
 
 # Window size
 WIDTH, HEIGHT = 600, 600
-background = pygame.image.load("bg.jpg")
+background = pygame.image.load("../assets/bg.jpg")
 background = pygame.transform.scale(background,(WIDTH, HEIGHT))
 
 weather_api = os.getenv("Weather_API_Key")
@@ -62,10 +62,10 @@ while running:
             if event.key == pygame.K_q:
                 running = False
             elif event.key == pygame.K_0:
-                background = pygame.image.load("bg.jpg")
+                background = pygame.image.load("../assets/bg.jpg")
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
             elif event.key == pygame.K_1:
-                background = pygame.image.load("bg_2.jpeg")
+                background = pygame.image.load("../assets/bg_2.jpeg")
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
                 
     screen.blit(background, (0, 0))
