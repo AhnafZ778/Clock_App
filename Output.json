@@ -1,0 +1,38 @@
+{
+    "location": {
+        "name": "Dhaka",
+        "region": "",
+        "country": "Bangladesh",
+        "lat": 23.7231,
+        "lon": 90.4086,
+        "tz_id": "Asia/Dhaka",
+        "localtime_epoch": 1760425173,
+        "localtime": "2025-10-14 12:59"
+    },
+    "current": {
+        "last_updated_epoch": 1760424300,
+        "last_updated": "2025-10-14 12:45",
+        "temp_c": 31.3,
+        "is_day": 1,
+        "condition": {
+            "text": "Sunny",
+            "icon": "//cdn.weatherapi.com/weather/64x64/day/113.png",
+            "code": 1000
+        },
+        "wind_mph": 7.4,
+        "wind_dir": "NNW",
+        "humidity": 56,
+        "cloud": 9,
+        "feelslike_c": 34.8,
+        "air_quality": {
+            "co": 575.85,
+            "no2": 25.35,
+            "o3": 47.0,
+            "so2": 14.45,
+            "pm2_5": 65.35,
+            "pm10": 67.45,
+            "us-epa-index": 3,
+            "gb-defra-index": 9
+        }
+    }
+}
