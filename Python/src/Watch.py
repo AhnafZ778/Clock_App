@@ -66,7 +66,7 @@ while running:
                 background = pygame.image.load("Python/assets/bg.jpg");
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT));
             elif event.key == pygame.K_1:
-                background = pygame.image.load("Python/assets/bg_2.jpeg");
+                background = pygame.image.load("Python/assets/bg_2.jpeggit");
                 background = pygame.transform.scale(background, (WIDTH, HEIGHT));
                 
     screen.blit(background, (0, 0));
