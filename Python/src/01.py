@@ -6,7 +6,7 @@ api = os.getenv("Weather_API_Key")
 
 url = f"http://api.weatherapi.com/v1/current.json?key={api}&q=Dhaka&aqi=yes"
 
-
+print("Adi gay")
 # response = requests.get(url)
 
 # if response.status_code == 200:
