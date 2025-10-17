@@ -1,0 +1,11 @@
+{
+    "background": "bg1",
+    "theme_name": "Purple",
+    "digit_color_name": "White",
+    "weather": {
+        "api_key": "bc9855753f21423aba465059251410",
+        "city": "Dhaka",
+        "units": "metric",
+        "refresh_minutes": 15
+    }
+}
