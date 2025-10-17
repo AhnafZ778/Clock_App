@@ -62,9 +62,9 @@ try:
     _temp_raw_backgrounds = {}
     _temp_raw_backgrounds['bg1'] = pygame.transform.scale(pygame.image.load(os.path.join(assets_dir, 'bg.jpg')).convert_alpha(), (WIDTH, HEIGHT))
     try:
-        _temp_raw_backgrounds['bg2'] = pygame.transform.scale(pygame.image.load(os.path.join(assets_dir, 'bg_2.jpeg')).convert_alpha(), (WIDTH, HEIGHT))
+        _temp_raw_backgrounds['bg3'] = pygame.transform.scale(pygame.image.load(os.path.join(assets_dir, 'bg3.jpg')).convert_alpha(), (WIDTH, HEIGHT))
     except FileNotFoundError:
-        print("Warning: 'bg_2.jpeg' not found. Using 'bg1.jpg' as a fallback.")
+        print("Warning: 'bg3.jpg' not found. Using 'bg1.jpg' as a fallback.")
     raw_backgrounds = _temp_raw_backgrounds
 
     settings_icon = pygame.transform.scale(pygame.image.load(os.path.join(assets_dir, 'gear.png')).convert_alpha(), (30, 30))
