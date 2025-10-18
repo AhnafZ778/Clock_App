@@ -1,9 +1,9 @@
 {
     "background": "bg1",
-    "theme_name": "Purple",
+    "theme_name": "Orange",
     "digit_color_name": "Gray",
     "weather": {
-        "api_key": "",
+        "api_key": "bc9855753f21423aba465059251410",
         "city": "Dhaka",
         "units": "metric",
         "refresh_minutes": 15
@@ -17,8 +17,8 @@
     },
     "sound": {
         "enabled": true,
-        "path": "C:\\Users\\HP\\Downloads\\Connie Francis - Pretty Little Baby (Official Audio).mp3",
-        "gain_percent": 200
+        "path": "C:\\Users\\HP\\Downloads\\Afghan taliban english song.mp3",
+        "gain_percent": 100
     },
     "custom_background_path": null
 }
