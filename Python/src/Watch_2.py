@@ -11,16 +11,27 @@ import uuid
 import threading
 import time
 
+# --- Weather HTTP ---
 try:
     import requests
 except ImportError:
     requests = None
 
+# --- Transparent drag (Windows only) ---
 try:
     import win32api, win32con, win32gui
 except ImportError:
     win32api = None
     print("Warning: 'pywin32' not found. Window transparency and dragging will be disabled.")
+
+# --- Native file picker for custom background ---
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except Exception:
+    tk = None
+    filedialog = None
+    print("Warning: 'tkinter' not available. Custom background picker will be disabled.")
 
 
 # =================================================================================
@@ -105,11 +116,11 @@ try:
     pygame.draw.line(delete_task_icon, (0, 0, 0), (5, 15), (15, 5), 2)
 
     # Fonts
-    font_bold = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Bold.ttf'), 150)   # clock time
+    font_bold = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Bold.ttf'), 150)  # clock time
     font_regular = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Regular.ttf'), 36)
     font_small = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Regular.ttf'), 24)
     font_tiny = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Regular.ttf'), 18)
-    # NEW: dedicated big font for WEATHER temp (smaller than clock)
+    # Dedicated big font for WEATHER temp (smaller than clock)
     font_weather_big = pygame.font.Font(os.path.join(fonts_dir, 'Doto_Rounded-Bold.ttf'), 96)
 
 except Exception as e:
@@ -126,6 +137,7 @@ DIGIT_COLORS = {"White": (255, 255, 255), "Black": (0, 0, 0), "Gray": (200, 200,
 current_background_key = 'bg1'
 current_theme_color = THEMES["Purple"]
 current_digit_color = DIGIT_COLORS["White"]
+custom_background_path = None  # persisted absolute path for 'custom'
 tasks = []
 
 weather_config = {
@@ -136,15 +148,37 @@ weather_config = {
 }
 
 def load_settings():
-    global current_theme_color, current_background_key, current_digit_color, weather_config
+    global current_theme_color, current_background_key, current_digit_color, weather_config, custom_background_path
     try:
         with open(CONFIG_FILE, 'r') as f:
             settings = json.load(f)
+
+        # Load custom background path first (so we can show preview in tiles)
+        custom_background_path = settings.get("custom_background_path") or None
+        if custom_background_path and os.path.exists(custom_background_path):
+            try:
+                img = pygame.image.load(custom_background_path).convert_alpha()
+                img = pygame.transform.scale(img, (WIDTH, HEIGHT))
+                # Apply the same dark overlay for consistency
+                temp = img.copy()
+                temp.blit(overlay, (0, 0))
+                raw_backgrounds["custom"] = img
+                rounded_backgrounds["custom"] = apply_rounded_corners(temp, CORNER_RADIUS)
+            except Exception as e:
+                print(f"Warning: failed to load custom background at startup: {e}")
+                custom_background_path = None
+
         loaded_bg_key = settings.get('background', current_background_key)
-        current_background_key = loaded_bg_key if loaded_bg_key in raw_backgrounds else 'bg1'
+        # If user had 'custom' selected but file missing, fallback gracefully
+        if loaded_bg_key == 'custom' and "custom" not in raw_backgrounds:
+            current_background_key = 'bg1'
+        else:
+            current_background_key = loaded_bg_key if loaded_bg_key in raw_backgrounds else 'bg1'
+
         current_theme_color = THEMES.get(settings.get('theme_name', "Purple"), THEMES["Purple"])
         loaded_digit_color_name = settings.get('digit_color_name', "White")
         current_digit_color = DIGIT_COLORS.get(loaded_digit_color_name, DIGIT_COLORS["White"])
+
         wc = settings.get("weather", {})
         weather_config.update({
             "api_key": wc.get("api_key", weather_config["api_key"]),
@@ -163,7 +197,8 @@ def save_settings():
             'background': current_background_key,
             'theme_name': theme_name,
             'digit_color_name': digit_color_name,
-            'weather': weather_config
+            'weather': weather_config,
+            'custom_background_path': custom_background_path
         }, f, indent=4)
 
 def load_tasks():
@@ -185,9 +220,6 @@ def load_tasks():
 def save_tasks():
     with open(TODO_FILE, 'w') as f:
         json.dump(tasks, f, indent=4)
-
-load_settings()
-load_tasks()
 
 
 # =================================================================================
@@ -225,8 +257,59 @@ task_input_text = ""
 input_box_rect = pygame.Rect(WIDTH // 2 - 150, HEIGHT - 80, 300, 40)
 task_rects = {}
 
+# --- Load persisted settings & tasks after helpers are defined (uses overlay above) ---
+load_settings()
+load_tasks()
+
+
 # =================================================================================
-# 6.5 WEATHER SERVICE
+# 6.5 CUSTOM BACKGROUND PICKER
+# =================================================================================
+def add_custom_background():
+    """Open file dialog for user to choose an image and load it as custom background."""
+    global custom_background_path, current_background_key
+    if filedialog is None:
+        print("Custom background picker is unavailable (tkinter missing).")
+        return
+
+    # use a tiny hidden tk root to open the OS-native dialog
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)  # pop above pygame window
+        file_path = filedialog.askopenfilename(
+            title="Choose Background Image",
+            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")]
+        )
+    finally:
+        try:
+            root.destroy()
+        except Exception:
+            pass
+
+    if not file_path:
+        return  # user canceled
+
+    try:
+        img = pygame.image.load(file_path).convert_alpha()
+        img = pygame.transform.scale(img, (WIDTH, HEIGHT))
+
+        # Build rounded/darkened version to match built-in backgrounds
+        temp_surface = img.copy()
+        temp_surface.blit(overlay, (0, 0))
+        raw_backgrounds["custom"] = img
+        rounded_backgrounds["custom"] = apply_rounded_corners(temp_surface, CORNER_RADIUS)
+
+        custom_background_path = os.path.abspath(file_path)
+        current_background_key = "custom"
+        save_settings()
+        print(f"[INFO] Custom background loaded: {custom_background_path}")
+    except Exception as e:
+        print(f"Error loading custom background: {e}")
+
+
+# =================================================================================
+# 6.6 WEATHER SERVICE
 # =================================================================================
 class WeatherService:
     def __init__(self, config, on_update=None):
@@ -322,18 +405,16 @@ weather_service = WeatherService(weather_config)
 
 
 # =================================================================================
-# 6.6 WEATHER RENDER HELPERS + TOOLTIP
+# 6.7 WEATHER/TOOLTIP RENDER HELPERS
 # =================================================================================
 def draw_weather_icon(surface, rect, color=(255,255,255), accent=(255,255,255)):
     """Minimal cloud + rain icon drawn from primitives."""
     icon = pygame.Surface(rect.size, pygame.SRCALPHA)
     w, h = rect.size
-    # cloud puffs
     pygame.draw.circle(icon, color, (int(w*0.35), int(h*0.55)), int(h*0.22))
     pygame.draw.circle(icon, color, (int(w*0.55), int(h*0.50)), int(h*0.27))
     pygame.draw.circle(icon, color, (int(w*0.70), int(h*0.60)), int(h*0.20))
     pygame.draw.rect(icon, color, (int(w*0.25), int(h*0.60), int(w*0.55), int(h*0.18)), border_radius=8)
-    # raindrops
     for x in (0.35, 0.55, 0.75):
         pygame.draw.line(icon, accent, (int(w*x)-3, int(h*0.82)), (int(w*x), int(h*0.90)), 2)
     surface.blit(icon, rect.topleft)
@@ -346,12 +427,9 @@ def draw_tooltip(surface, text, anchor_rect, font, alpha, bg=(30, 32, 40), fg=(2
     text_surf = font.render(text, True, fg)
     w = text_surf.get_width() + pad_x * 2
     h = text_surf.get_height() + pad_y * 2
-
-    # Position centered under the button
     x = max(8, min(anchor_rect.centerx - w // 2, surface.get_width() - w - 8))
     y = anchor_rect.bottom + 8
     tooltip_rect = pygame.Rect(x, y, w, h)
-
     bg_surf = pygame.Surface((w, h), pygame.SRCALPHA)
     pygame.draw.rect(bg_surf, (*bg, int(alpha)), bg_surf.get_rect(), border_radius=8)
     surface.blit(bg_surf, tooltip_rect.topleft)
@@ -366,22 +444,16 @@ def draw_weather_summary_inline(surface, pos, fonts, theme_color):
         txt = snap.get("reason", "Weather loading…")
         surface.blit(font_tiny.render(txt, True, (210,210,210)), (x, y))
         return
-    t = snap.get("temp")
-    u = snap.get("temp_unit", "°C")
-    p = snap.get("pop_today")
+    t = snap.get("temp"); u = snap.get("temp_unit", "°C"); p = snap.get("pop_today")
     parts = []
-    if t is not None:
-        parts.append(f"{round(t)}{u}")
-    if p is not None:
-        parts.append(f"Rain {p}%")
+    if t is not None: parts.append(f"{round(t)}{u}")
+    if p is not None: parts.append(f"Rain {p}%")
     line = " • ".join(parts) if parts else "—"
     surface.blit(font_small.render(line, True, theme_color), (x, y))
 
 def draw_weather_view(surface, theme_color, digit_color, fonts):
     """Full-screen WEATHER view with non-overlapping layout."""
     font_small, font_tiny, font_regular, font_bold, font_weather_big = fonts
-
-    # Panel
     panel = pygame.Rect(24, 70, WIDTH-48, HEIGHT-110)
     pygame.draw.rect(surface, (35,37,45,210), panel, border_radius=16)
     pygame.draw.rect(surface, theme_color, panel, 2, border_radius=16)
@@ -390,30 +462,25 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
     x = panel.x + pad
     y = panel.y + pad
 
-    # Title
     draw_text_with_shadow(surface, "Weather", font_regular, (255,255,255), (x, y))
-    y += 44  # a bit more space under title
+    y += 44
 
-    # Snapshot
     snap = weather_service.get_snapshot()
     if not snap.get("ok"):
         surface.blit(font_small.render(snap.get("reason","Weather unavailable"), True, (230,230,230)), (x, y))
         return
 
-    # === Top block: Big temp on its own line ===
     temp = snap.get("temp"); unit = snap.get("temp_unit","°C")
     if temp is not None:
         temp_surf = font_weather_big.render(f"{round(temp)}{unit}", True, digit_color)
         surface.blit(temp_surf, (x, y))
-        y += temp_surf.get_height() + 8  # push below big temp
+        y += temp_surf.get_height() + 8
 
-    # Condition text (below temp, not to the right)
     cond = snap.get("condition","")
     if cond:
         surface.blit(font_small.render(cond, True, (220,220,220)), (x, y))
-        y += 32  # space after condition
+        y += 32
 
-    # === Secondary row: Feels, Humidity, Wind, Today H/L, Rain% ===
     feels = snap.get("feels"); hum = snap.get("humidity")
     wind = snap.get("wind"); wind_u = snap.get("wind_unit","kph")
     high = snap.get("high"); low = snap.get("low"); pop = snap.get("pop_today")
@@ -425,9 +492,8 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
     if pop is not None: bits.append(f"Rain {pop}%")
     info = "  •  ".join(bits)
     surface.blit(font_small.render(info, True, (210,210,210)), (x, y))
-    y += 40  # extra space before mini-forecast
+    y += 40
 
-    # === Mini 3-day forecast ===
     surface.blit(font_small.render("Next 3 days", True, (230,230,230)), (x, y))
     y += 28
     mini = snap.get("mini", [])
@@ -448,12 +514,6 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
         cond = d.get("cond","")
         if cond:
             surface.blit(font_tiny.render(cond, True, (190,190,190)), (cx, dy))
-
-    # Alerts (if any)
-    alerts = (snap.get("alerts") or {}).get("alert", [])
-    if alerts:
-        ay = panel.bottom - 28
-        surface.blit(font_tiny.render(f"Alerts: {len(alerts)}", True, (255,180,120)), (x, ay))
 
 
 # =================================================================================
@@ -497,7 +557,6 @@ def start_flip(target_view):
         return
     from_view = app_view
     to_view = target_view
-    # Direction heuristic: flipping away from main = 1, returning to main = -1
     flip_direction = -1 if target_view == 'main' else 1
     flip_progress = 0.0
     is_flipping = True
@@ -521,16 +580,24 @@ while running:
                 start_flip('main' if app_view == 'weather' else 'weather')
 
             elif app_view == 'settings':
+                # Theme buttons
                 for name, rect in theme_buttons.items():
                     if rect.collidepoint(event.pos):
                         current_theme_color = THEMES[name]
                         click_feedback[name] = {'start_time': now, 'scale': 0.8}
                         save_settings()
+
+                # Background buttons (includes default, custom preview, and the + tile)
                 for name, rect in background_buttons.items():
                     if rect.collidepoint(event.pos):
-                        current_background_key = name
-                        click_feedback[name] = {'start_time': now, 'scale': 0.9}
-                        save_settings()
+                        if name == "add_custom":
+                            add_custom_background()
+                        else:
+                            current_background_key = name
+                            click_feedback[name] = {'start_time': now, 'scale': 0.9}
+                            save_settings()
+
+                # Digit color buttons
                 for name, rect in digit_color_buttons.items():
                     if rect.collidepoint(event.pos):
                         current_digit_color = DIGIT_COLORS[name]
@@ -630,7 +697,7 @@ while running:
             is_flipping = False
             app_view = to_view
 
-    # Determine which content to render based on flip_progress
+    # Which content to render (front/back of the flip)
     current_content_view = to_view if flip_progress > 0.5 else from_view
 
     # --- Render views ---
@@ -669,7 +736,7 @@ while running:
             font_regular.render(date_str, True, (0,0,0)).get_rect(center=(WIDTH//2, HEIGHT//2 + 20)).topleft
         )
 
-        # To-Do List (unchanged)
+        # To-Do List
         draw_text_with_shadow(app_surface, "To-Do List", font_small, (220,220,220), (50, HEIGHT // 2 + 70))
         task_y = HEIGHT // 2 + 110
         task_rects = {}
@@ -703,9 +770,14 @@ while running:
     elif current_content_view == 'settings':
         pygame.draw.rect(app_surface, (40,42,54), (0,0,WIDTH,HEIGHT), border_radius=CORNER_RADIUS)
         draw_text_with_shadow(app_surface, "Settings", font_regular, (255,255,255), (30, 30))
-        draw_text_with_shadow(app_surface, "Theme Color", font_small, (220,220,220), (50, 100))
-        draw_text_with_shadow(app_surface, "Background",  font_small, (220,220,220), (50, 220))
-        draw_text_with_shadow(app_surface, "Digit Color", font_small, (220,220,220), (50, 340))
+        draw_text_with_shadow(app_surface, "Theme Color", (font_small), (220,220,220), (50, 100))
+        draw_text_with_shadow(app_surface, "Background",  (font_small), (220,220,220), (50, 220))
+        draw_text_with_shadow(app_surface, "Digit Color", (font_small), (220,220,220), (50, 340))
+
+        # Reset per-frame button maps to keep them in sync
+        theme_buttons = {}
+        background_buttons = {}
+        digit_color_buttons = {}
 
         # Theme buttons
         x = 50
@@ -721,7 +793,7 @@ while running:
             if current_theme_color == color: pygame.draw.rect(app_surface, (255,255,255), rect, 2, border_radius=8)
             x += 100
 
-        # Background buttons
+        # Background buttons (built-ins + custom preview if loaded)
         x = 50
         for name, image in raw_backgrounds.items():
             rect = pygame.Rect(x, 260, 100, 60); background_buttons[name] = rect
@@ -731,9 +803,22 @@ while running:
                 if elapsed < 200: scale = 0.9 + ease_out_quad(elapsed/200)*0.1
                 else: click_feedback.pop(name)
             scaled_rect = rect.inflate((rect.width*scale)-rect.width, (rect.height*scale)-rect.height)
-            app_surface.blit(pygame.transform.scale(image, scaled_rect.size), scaled_rect)
+            # Use rounded preview (darker) for consistency
+            preview = pygame.transform.scale(rounded_backgrounds[name], scaled_rect.size)
+            app_surface.blit(preview, scaled_rect)
             if current_background_key == name: pygame.draw.rect(app_surface, current_theme_color, rect, 2, border_radius=5)
             x += 120
+
+        # --- Add Custom Background Tile (+) ---
+        plus_rect = pygame.Rect(x, 260, 100, 60)
+        background_buttons["add_custom"] = plus_rect
+        pygame.draw.rect(app_surface, (255,255,255), plus_rect, 2, border_radius=8)
+        pygame.draw.line(app_surface, (255,255,255),
+                         (plus_rect.centerx - 15, plus_rect.centery),
+                         (plus_rect.centerx + 15, plus_rect.centery), 3)
+        pygame.draw.line(app_surface, (255,255,255),
+                         (plus_rect.centerx, plus_rect.centery - 15),
+                         (plus_rect.centerx, plus_rect.centery + 15), 3)
 
         # Digit color buttons
         x = 50
