@@ -1,7 +1,7 @@
 {
     "background": "bg1",
-    "theme_name": "Purple",
-    "digit_color_name": "White",
+    "theme_name": "Cyan",
+    "digit_color_name": "Black",
     "weather": {
         "api_key": "bc9855753f21423aba465059251410",
         "city": "Dhaka",

@@ -1,5 +1,12 @@
 {
-    "background": "bg3",
-    "theme_name": "Orange",
-    "digit_color_name": "White"
+    "background": "bg2",
+    "theme_name": "Purple",
+    "digit_color_name": "Gray",
+    "weather": {
+        "api_key": "bc9855753f21423aba465059251410",
+        "city": "Dhaka",
+        "units": "metric",
+        "refresh_minutes": 15
+    },
+    "custom_background_path": "C:\\Users\\HP\\Downloads\\musashi using headphones \ud83d\ude42.jpg"
 }
