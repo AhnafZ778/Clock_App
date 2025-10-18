@@ -273,7 +273,7 @@ def ease_in_out_quad(t): return t*t*2 if t<0.5 else (-2*t*t)+(4*t)-1
 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 overlay.fill((0, 0, 0, 80))
 rounded_backgrounds = {}
-for key, bg_image in raw_backgrounds.items():
+for key, bg_image in _temp_raw_backgrounds.items():
     tmp = bg_image.copy(); tmp.blit(overlay, (0,0))
     rounded_backgrounds[key] = apply_rounded_corners(tmp, CORNER_RADIUS)
 
@@ -987,11 +987,13 @@ while running:
                     dragging, offset_x, offset_y = True, *event.pos
 
             elif app_view == 'pomo_adjust':
+                # slider interaction
                 for name, s in pomo_sliders.items():
                     if s.track_rect.collidepoint(event.pos) or s.handle_rect.collidepoint(event.pos):
                         pomo_active_slider = name
                         s.set_from_pos(event.pos[0])
                         break
+                # buttons
                 for key, rect in list(pomo_adjust_buttons.items()):
                     if rect.collidepoint(event.pos):
                         if key == 'save':
@@ -1160,10 +1162,10 @@ while running:
     elif current_content_view == 'settings':
         pygame.draw.rect(app_surface, (40,42,54), (0,0,WIDTH,HEIGHT), border_radius=CORNER_RADIUS)
         draw_text_with_shadow(app_surface, "Settings", font_regular, (255,255,255), (30, 30))
-        draw_text_with_shadow(app_surface, "Theme Color", font_small, (220,220,220), (50, 100))
-        draw_text_with_shadow(app_surface, "Background",  font_small, (220,220,220), (50, 220))
-        draw_text_with_shadow(app_surface, "Digit Color", font_small, (220,220,220), (50, 340))
-        draw_text_with_shadow(app_surface, "Sound",       font_small, (220,220,220), (50, 460))
+        draw_text_with_shadow(app_surface, "Theme Color", (font_small), (220,220,220), (50, 100))
+        draw_text_with_shadow(app_surface, "Background",  (font_small), (220,220,220), (50, 220))
+        draw_text_with_shadow(app_surface, "Digit Color", (font_small), (220,220,220), (50, 340))
+        draw_text_with_shadow(app_surface, "Sound",       (font_small), (220,220,220), (50, 460))
 
         theme_buttons = {}; background_buttons = {}; digit_color_buttons = {}; sound_buttons = {}
 
@@ -1256,7 +1258,7 @@ while running:
             distorted_surface.blit(temp_row_surface.subsurface(abs(row_offset) + row_offset, 0, anim_width, 1), (0, y))
         screen.blit(distorted_surface, ((WIDTH - anim_width)//2, 0))
 
-    # --- Top buttons + hovers ---
+    # --- Hover animations bookkeeping ---
     for key, rect in [('settings', settings_button_rect),
                       ('weather',  weather_button_rect),
                       ('pomodoro', pomodoro_button_rect),
@@ -1271,36 +1273,41 @@ while running:
         hover_targets[key]['angle'] += (target_angle - hover_targets[key]['angle']) * 0.2
         hover_targets[key]['tip_alpha'] += (target_alpha - hover_targets[key]['tip_alpha']) * 0.25
 
-    # --- Icon background tiles to prevent green halo during flips ---
-    def draw_icon_tile(target_rect, hovered):
+    # --- Draw icons
+    # Show small opaque "safety tiles" ONLY during flip to prevent green halo.
+    in_transition = is_flipping or (0.0 < flip_progress < 1.0) or (anim_width < WIDTH)
+
+    def maybe_draw_tile(target_rect, hovered):
+        if not in_transition:
+            return
         tile = pygame.Surface(target_rect.size, pygame.SRCALPHA)
         pygame.draw.rect(tile, (35, 37, 45, 230), tile.get_rect(), border_radius=6)
         border_col = current_theme_color if hovered else (80, 82, 96, 200)
         pygame.draw.rect(tile, border_col, tile.get_rect(), 2, border_radius=6)
         screen.blit(tile, target_rect.topleft)
 
-    # Settings tile + icon
-    draw_icon_tile(settings_button_rect, settings_button_rect.collidepoint(mouse_pos))
+    # Settings
+    maybe_draw_tile(settings_button_rect, settings_button_rect.collidepoint(mouse_pos))
     settings_icon_rot = pygame.transform.rotozoom(settings_icon, hover_targets['settings']['angle'], hover_targets['settings']['scale'])
     screen.blit(settings_icon_rot, settings_icon_rot.get_rect(center=settings_button_rect.center))
 
-    # Weather tile + icon (fallback vector if no PNG)
-    draw_icon_tile(weather_button_rect, weather_button_rect.collidepoint(mouse_pos))
+    # Weather
+    maybe_draw_tile(weather_button_rect, weather_button_rect.collidepoint(mouse_pos))
     if weather_png is not None:
         weather_icon_rot = pygame.transform.rotozoom(weather_png, hover_targets['weather']['angle'], hover_targets['weather']['scale'])
         screen.blit(weather_icon_rot, weather_icon_rot.get_rect(center=weather_button_rect.center))
     else:
         draw_weather_icon(screen, weather_button_rect, color=(255,255,255))
 
-    # Pomodoro tile + icon (fallback vector tomato)
-    draw_icon_tile(pomodoro_button_rect, pomodoro_button_rect.collidepoint(mouse_pos))
+    # Pomodoro
+    maybe_draw_tile(pomodoro_button_rect, pomodoro_button_rect.collidepoint(mouse_pos))
     if pomodoro_png is not None:
         pomo_icon_rot = pygame.transform.rotozoom(pomodoro_png, hover_targets['pomodoro']['angle'], hover_targets['pomodoro']['scale'])
         screen.blit(pomo_icon_rot, pomo_icon_rot.get_rect(center=pomodoro_button_rect.center))
     else:
         draw_tomato_icon(screen, pomodoro_button_rect)
 
-    # Close button (already had opaque background)
+    # Close button (always had its own opaque tile so no change)
     close_button_bg_color = (255, 0, 0, 200) if close_button_rect.collidepoint(mouse_pos) else (40, 42, 54, 180)
     btn_surf = pygame.Surface(close_button_rect.size, pygame.SRCALPHA)
     pygame.draw.rect(btn_surf, close_button_bg_color, btn_surf.get_rect(), border_radius=5)
