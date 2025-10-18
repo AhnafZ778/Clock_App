@@ -1,12 +1,24 @@
 {
-    "background": "bg2",
+    "background": "bg1",
     "theme_name": "Purple",
     "digit_color_name": "Gray",
     "weather": {
-        "api_key": "bc9855753f21423aba465059251410",
+        "api_key": "",
         "city": "Dhaka",
         "units": "metric",
         "refresh_minutes": 15
     },
-    "custom_background_path": "C:\\Users\\HP\\Downloads\\musashi using headphones \ud83d\ude42.jpg"
+    "pomodoro": {
+        "focus_minutes": 1,
+        "short_break_minutes": 5,
+        "long_break_minutes": 15,
+        "sessions_before_long": 4,
+        "auto_advance": false
+    },
+    "sound": {
+        "enabled": true,
+        "path": "C:\\Users\\HP\\Downloads\\Connie Francis - Pretty Little Baby (Official Audio).mp3",
+        "gain_percent": 200
+    },
+    "custom_background_path": null
 }
