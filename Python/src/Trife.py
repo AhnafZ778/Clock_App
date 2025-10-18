@@ -273,7 +273,7 @@ def ease_in_out_quad(t): return t*t*2 if t<0.5 else (-2*t*t)+(4*t)-1
 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 overlay.fill((0, 0, 0, 80))
 rounded_backgrounds = {}
-for key, bg_image in raw_backgrounds.items():
+for key, bg_image in _temp_raw_backgrounds.items():
     tmp = bg_image.copy(); tmp.blit(overlay, (0,0))
     rounded_backgrounds[key] = apply_rounded_corners(tmp, CORNER_RADIUS)
 
@@ -643,7 +643,6 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
     x = panel.x + pad
     y = panel.y + pad
 
-    # Header
     draw_text_with_shadow(surface, "Weather", font_regular, (255,255,255), (x, y))
     y += 50
 
@@ -652,20 +651,17 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
         surface.blit(font_small.render(snap.get("reason","Weather unavailable"), True, (230,230,230)), (x, y))
         return
 
-    # Big temperature
     temp = snap.get("temp"); unit = snap.get("temp_unit","°C")
     if temp is not None:
         big = font_weather_big.render(f"{round(temp)}{unit}", True, digit_color)
         surface.blit(big, (x, y))
         y += big.get_height() + 8
 
-    # Condition
     cond = snap.get("condition","")
     if cond:
         surface.blit(font_small.render(cond, True, (225,225,225)), (x, y))
         y += 30
 
-    # Details row
     feels = snap.get("feels"); hum = snap.get("humidity")
     wind = snap.get("wind"); wind_u = snap.get("wind_unit","kph")
     high = snap.get("high"); low = snap.get("low"); pop = snap.get("pop_today")
@@ -678,7 +674,6 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
     info = "  •  ".join(bits)
     surface.blit(font_small.render(info, True, (210,210,210)), (x, y))
 
-    # Mini forecast (bottom area)
     mini = snap.get("mini", [])
     col_w = (panel.width - 2*pad)//3
     bottom_y = panel.bottom - 120
@@ -748,7 +743,6 @@ def init_pomo_sliders():
     pomo_sliders["short"] = Slider(pygame.Rect(padx, start_y+gap, width, 6), 1, 180, pomodoro_config["short_break_minutes"], 1, "min")
     pomo_sliders["long"]  = Slider(pygame.Rect(padx, start_y+gap*2, width, 6), 1, 180, pomodoro_config["long_break_minutes"], 1, "min")
     pomo_sliders["sessions"] = Slider(pygame.Rect(padx, start_y+gap*3, width, 6), 1, 10, pomodoro_config["sessions_before_long"], 1, "sessions")
-    # Volume 0–200%
     initial_gain = int(sound_config.get("gain_percent", 100))
     pomo_sliders["volume"] = Slider(pygame.Rect(padx, start_y+gap*4, width, 6), 0, 200, initial_gain, 5, "%")
     pomo_sliders_initialized = True
@@ -765,23 +759,19 @@ def draw_pomodoro_view(surface, theme_color, digit_color, fonts):
     pad = 20
     x = panel.x + pad; y = panel.y + pad
 
-    # Mode label on the left
     mode_map = {'focus': 'Focus', 'short_break': 'Break', 'long_break': 'Long Break'}
     draw_text_with_shadow(surface, f"{mode_map.get(pomodoro_timer.mode, 'Focus')}",
                           font_regular, (255,255,255), (x, y))
 
-    # Adjust button on the right
     adjust_rect = pygame.Rect(panel.right - 140, y, 120, 32)
     pygame.draw.rect(surface, theme_color, adjust_rect, border_radius=10)
     surface.blit(font_tiny.render("Adjust", True, (20,20,24)), (adjust_rect.x + 28, adjust_rect.y + 7))
     pomo_buttons['adjust'] = adjust_rect
     y += 54
 
-    # ---------- Fit timer inside ring ----------
     ring_thickness = 12
     timer_text = pomodoro_timer.format_mmss()
 
-    # Max outer diameter allowed by layout (leave space for controls below)
     max_d = min(panel.width - 2*pad, panel.height - 220)
     max_d = max(220, max_d)
 
@@ -806,23 +796,19 @@ def draw_pomodoro_view(surface, theme_color, digit_color, fonts):
     ring_rect = pygame.Rect(0, 0, diameter, diameter)
     ring_rect.center = (panel.centerx, panel.centery - 20)
 
-    # Progress ring
     pygame.draw.arc(surface, (80, 82, 96), ring_rect, 0, math.tau, ring_thickness)
     progress = pomodoro_timer.progress_ratio()
     start_ang = -math.pi/2
     end_ang = start_ang + progress * math.tau
     pygame.draw.arc(surface, theme_color, ring_rect, start_ang, end_ang, ring_thickness)
 
-    # Center timer text inside ring
     t_surf = timer_font.render(timer_text, True, digit_color)
     surface.blit(t_surf, t_surf.get_rect(center=ring_rect.center))
 
-    # Info row
     info_y = ring_rect.bottom + 8
     info = f"Session {pomodoro_timer.sessions_completed + (1 if pomodoro_timer.mode!='focus' else 0)}  |  Auto {'ON' if pomodoro_timer.auto_advance else 'OFF'}  |  Sound {'ON' if sound_manager.enabled else 'OFF'}"
     surface.blit(font_small.render(info, True, (220,220,220)), (x, info_y))
 
-    # Controls
     btn_w, btn_h = 120, 40
     gap = 18
     total_w = btn_w*3 + gap*2
@@ -842,7 +828,6 @@ def draw_pomodoro_view(surface, theme_color, digit_color, fonts):
     draw_btn('reset', 'Reset')
     draw_btn('skip',  'Skip')
 
-    # Toggles: Auto, Sound
     toggle_w, toggle_h = 140, 34
     tog_gap = 16
     tot_w = toggle_w*2 + tog_gap
@@ -1002,11 +987,13 @@ while running:
                     dragging, offset_x, offset_y = True, *event.pos
 
             elif app_view == 'pomo_adjust':
+                # slider interaction
                 for name, s in pomo_sliders.items():
                     if s.track_rect.collidepoint(event.pos) or s.handle_rect.collidepoint(event.pos):
                         pomo_active_slider = name
                         s.set_from_pos(event.pos[0])
                         break
+                # buttons
                 for key, rect in list(pomo_adjust_buttons.items()):
                     if rect.collidepoint(event.pos):
                         if key == 'save':
@@ -1175,10 +1162,10 @@ while running:
     elif current_content_view == 'settings':
         pygame.draw.rect(app_surface, (40,42,54), (0,0,WIDTH,HEIGHT), border_radius=CORNER_RADIUS)
         draw_text_with_shadow(app_surface, "Settings", font_regular, (255,255,255), (30, 30))
-        draw_text_with_shadow(app_surface, "Theme Color", font_small, (220,220,220), (50, 100))
-        draw_text_with_shadow(app_surface, "Background",  font_small, (220,220,220), (50, 220))
-        draw_text_with_shadow(app_surface, "Digit Color", font_small, (220,220,220), (50, 340))
-        draw_text_with_shadow(app_surface, "Sound",       font_small, (220,220,220), (50, 460))
+        draw_text_with_shadow(app_surface, "Theme Color", (font_small), (220,220,220), (50, 100))
+        draw_text_with_shadow(app_surface, "Background",  (font_small), (220,220,220), (50, 220))
+        draw_text_with_shadow(app_surface, "Digit Color", (font_small), (220,220,220), (50, 340))
+        draw_text_with_shadow(app_surface, "Sound",       (font_small), (220,220,220), (50, 460))
 
         theme_buttons = {}; background_buttons = {}; digit_color_buttons = {}; sound_buttons = {}
 
@@ -1271,7 +1258,7 @@ while running:
             distorted_surface.blit(temp_row_surface.subsurface(abs(row_offset) + row_offset, 0, anim_width, 1), (0, y))
         screen.blit(distorted_surface, ((WIDTH - anim_width)//2, 0))
 
-    # --- Top buttons + hovers ---
+    # --- Hover animations bookkeeping ---
     for key, rect in [('settings', settings_button_rect),
                       ('weather',  weather_button_rect),
                       ('pomodoro', pomodoro_button_rect),
@@ -1286,21 +1273,41 @@ while running:
         hover_targets[key]['angle'] += (target_angle - hover_targets[key]['angle']) * 0.2
         hover_targets[key]['tip_alpha'] += (target_alpha - hover_targets[key]['tip_alpha']) * 0.25
 
+    # --- Draw icons
+    # Show small opaque "safety tiles" ONLY during flip to prevent green halo.
+    in_transition = is_flipping or (0.0 < flip_progress < 1.0) or (anim_width < WIDTH)
+
+    def maybe_draw_tile(target_rect, hovered):
+        if not in_transition:
+            return
+        tile = pygame.Surface(target_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(tile, (35, 37, 45, 230), tile.get_rect(), border_radius=6)
+        border_col = current_theme_color if hovered else (80, 82, 96, 200)
+        pygame.draw.rect(tile, border_col, tile.get_rect(), 2, border_radius=6)
+        screen.blit(tile, target_rect.topleft)
+
+    # Settings
+    maybe_draw_tile(settings_button_rect, settings_button_rect.collidepoint(mouse_pos))
     settings_icon_rot = pygame.transform.rotozoom(settings_icon, hover_targets['settings']['angle'], hover_targets['settings']['scale'])
     screen.blit(settings_icon_rot, settings_icon_rot.get_rect(center=settings_button_rect.center))
 
+    # Weather
+    maybe_draw_tile(weather_button_rect, weather_button_rect.collidepoint(mouse_pos))
     if weather_png is not None:
         weather_icon_rot = pygame.transform.rotozoom(weather_png, hover_targets['weather']['angle'], hover_targets['weather']['scale'])
         screen.blit(weather_icon_rot, weather_icon_rot.get_rect(center=weather_button_rect.center))
     else:
         draw_weather_icon(screen, weather_button_rect, color=(255,255,255))
 
+    # Pomodoro
+    maybe_draw_tile(pomodoro_button_rect, pomodoro_button_rect.collidepoint(mouse_pos))
     if pomodoro_png is not None:
         pomo_icon_rot = pygame.transform.rotozoom(pomodoro_png, hover_targets['pomodoro']['angle'], hover_targets['pomodoro']['scale'])
         screen.blit(pomo_icon_rot, pomo_icon_rot.get_rect(center=pomodoro_button_rect.center))
     else:
         draw_tomato_icon(screen, pomodoro_button_rect)
 
+    # Close button (always had its own opaque tile so no change)
     close_button_bg_color = (255, 0, 0, 200) if close_button_rect.collidepoint(mouse_pos) else (40, 42, 54, 180)
     btn_surf = pygame.Surface(close_button_rect.size, pygame.SRCALPHA)
     pygame.draw.rect(btn_surf, close_button_bg_color, btn_surf.get_rect(), border_radius=5)
