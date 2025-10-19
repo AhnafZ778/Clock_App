@@ -33,6 +33,13 @@ except Exception:
     filedialog = None
     print("Warning: 'tkinter' not available. File picker will be disabled.")
 
+# --- NEW: System Stats ---
+try:
+    import psutil
+except ImportError:
+    psutil = None
+    print("Warning: 'psutil' not found. System Stats view will be disabled.")
+
 
 # =================================================================================
 # 2. INITIALIZE & SETUP CORE APP VARIABLES
@@ -49,10 +56,12 @@ assets_dir = os.path.join(script_dir, '..', 'assets')
 fonts_dir = os.path.join(assets_dir, 'fonts')
 TRANSPARENT_COLOR = (0, 255, 0)
 
-# --- Top bar buttons ---
+# --- MODIFIED: Top bar buttons (added system and focus) ---
 settings_button_rect = pygame.Rect(10, 10, 30, 30)
 weather_button_rect  = pygame.Rect(50, 10, 30, 30)
 pomodoro_button_rect = pygame.Rect(90, 10, 30, 30)
+system_button_rect   = pygame.Rect(130, 10, 30, 30) # --- NEW ---
+focus_button_rect    = pygame.Rect(170, 10, 30, 30) # --- NEW ---
 close_button_rect    = pygame.Rect(WIDTH - 40, 10, 30, 30)
 
 # =================================================================================
@@ -139,6 +148,7 @@ try:
     font_tiny = pygame.font.Font(FONT_REG_PATH, 18)
     font_weather_big  = pygame.font.Font(FONT_BOLD_PATH, 96)
     font_pomo_big     = pygame.font.Font(FONT_BOLD_PATH, 96)
+    font_sys_big = pygame.font.Font(FONT_BOLD_PATH, 80) # --- NEW ---
 
 except Exception as e:
     print(f"FATAL ERROR: Could not load essential assets: {e}. Please check your assets folder and font files.")
@@ -156,6 +166,7 @@ current_theme_color = THEMES["Purple"]
 current_digit_color = DIGIT_COLORS["White"]
 custom_background_path = None
 tasks = []
+is_focus_mode = False # --- NEW ---
 
 weather_config = {"api_key": "", "city": "Dhaka", "units": "metric", "refresh_minutes": 15}
 pomodoro_config = {"focus_minutes": 25, "short_break_minutes": 5, "long_break_minutes": 15,
@@ -164,6 +175,7 @@ pomodoro_config = {"focus_minutes": 25, "short_break_minutes": 5, "long_break_mi
 sound_config = {"enabled": True, "path": None, "gain_percent": 100}
 
 def save_settings():
+    # --- MODIFIED: Added focus_mode ---
     theme_name = [name for name, color in THEMES.items() if color == current_theme_color][0]
     digit_color_name = [name for name, color in DIGIT_COLORS.items() if color == current_digit_color][0]
     with open(CONFIG_FILE, 'w') as f:
@@ -174,12 +186,14 @@ def save_settings():
             'weather': weather_config,
             'pomodoro': pomodoro_config,
             'sound': sound_config,
-            'custom_background_path': custom_background_path
+            'custom_background_path': custom_background_path,
+            'focus_mode': is_focus_mode # --- NEW ---
         }, f, indent=4)
 
 def load_settings():
     global current_theme_color, current_background_key, current_digit_color
     global custom_background_path, weather_config, pomodoro_config, sound_config
+    global is_focus_mode # --- NEW ---
     try:
         with open(CONFIG_FILE, 'r') as f:
             settings = json.load(f)
@@ -201,6 +215,7 @@ def load_settings():
 
         current_theme_color = THEMES.get(settings.get('theme_name', "Purple"), THEMES["Purple"])
         current_digit_color = DIGIT_COLORS.get(settings.get('digit_color_name', "White"), DIGIT_COLORS["White"])
+        is_focus_mode = bool(settings.get('focus_mode', False)) # --- NEW ---
 
         wc = settings.get("weather", {})
         weather_config.update({
@@ -215,6 +230,7 @@ def load_settings():
             "focus_minutes": int(pc.get("focus_minutes", pomodoro_config["focus_minutes"])),
             "short_break_minutes": int(pc.get("short_break_minutes", pomodoro_config["short_break_minutes"])),
             "long_break_minutes": int(pc.get("long_break_minutes", pomodoro_config["long_break_minutes"])),
+            # --- FIX: Corrected pomDoro_config typo to pomodoro_config ---
             "sessions_before_long": int(pc.get("sessions_before_long", pomodoro_config["sessions_before_long"])),
             "auto_advance": bool(pc.get("auto_advance", pomodoro_config["auto_advance"])),
         })
@@ -267,6 +283,15 @@ def draw_text_with_shadow(surface, text, font, color, position, shadow_color=(0,
     sh = font.render(text, True, shadow_color); surface.blit(sh, (x+3, y+3))
     tx = font.render(text, True, color); surface.blit(tx, (x, y))
 
+# --- NEW: Helper for drawing progress bars ---
+def draw_progress_bar(surface, rect, progress, color, bg_color=(55,57,68)):
+    pygame.draw.rect(surface, bg_color, rect, border_radius=8)
+    if progress > 0:
+        bar_rect = pygame.Rect(rect.x, rect.y, int(rect.width * progress), rect.height)
+        pygame.draw.rect(surface, color, bar_rect, border_radius=8)
+    pygame.draw.rect(surface, color, rect, 2, border_radius=8)
+
+
 def ease_out_quad(t): return t*(2-t)
 def ease_in_out_quad(t): return t*t*2 if t<0.5 else (-2*t*t)+(4*t)-1
 
@@ -277,12 +302,16 @@ for key, bg_image in raw_backgrounds.items():
     tmp = bg_image.copy(); tmp.blit(overlay, (0,0))
     rounded_backgrounds[key] = apply_rounded_corners(tmp, CORNER_RADIUS)
 
-# To-Do UI
+# --- MODIFIED: To-Do UI (added scroll state) ---
 add_task_button_rect = pygame.Rect(WIDTH - 50, HEIGHT - 50, 30, 30)
 task_input_active = False
 task_input_text = ""
 input_box_rect = pygame.Rect(WIDTH // 2 - 150, HEIGHT - 80, 300, 40)
 task_rects = {}
+task_scroll_offset = 0 # --- NEW ---
+MAX_TASKS_DISPLAY = 6  # --- NEW ---
+tasks_area_rect = pygame.Rect(40, HEIGHT // 2 + 100, WIDTH - 80, 180) # --- NEW ---
+
 
 # --- Load settings & tasks after helpers (needs overlay above) ---
 load_settings()
@@ -465,17 +494,21 @@ class WeatherService:
                 mini.append({
                     "date": d,
                     "cond": (dd.get("condition") or {}).get("text", ""),
+                    "cond_code": (dd.get("condition") or {}).get("code"), # --- NEW ---
                     "high": dd.get("maxtemp_c") if metric else dd.get("maxtemp_f"),
                     "low":  dd.get("mintemp_c") if metric else dd.get("mintemp_f"),
                     "pop":  dd.get("daily_chance_of_rain"),
                 })
 
+            # --- MODIFIED: Added condition 'code' ---
             snapshot = {
                 "ok": True,
                 "city": (data.get("location") or {}).get("name", self.city),
                 "country": (data.get("location") or {}).get("country", ""),
                 "temp": temp, "feels": feels, "temp_unit": temp_unit,
                 "condition": (current.get("condition") or {}).get("text", ""),
+                "condition_code": (current.get("condition") or {}).get("code"), # --- NEW ---
+                "is_day": bool(current.get("is_day", 1)), # --- NEW ---
                 "humidity": current.get("humidity"),
                 "wind": wind, "wind_unit": wind_unit,
                 "precip_mm": current.get("precip_mm"),
@@ -581,9 +614,50 @@ pomodoro_timer = PomodoroTimer(pomodoro_config, on_session_complete=lambda prev,
 
 
 # =================================================================================
+# --- NEW: 6.85 SYSTEM MONITOR ---
+# =================================================================================
+class SystemMonitor:
+    def __init__(self):
+        self.refresh_secs = 2
+        self._lock = threading.Lock()
+        self._snapshot = {"cpu": 0.0, "ram_pct": 0.0, "ram_total": 0.0, "ram_used": 0.0}
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        if psutil:
+            self._thread.start()
+        else:
+            self._snapshot = {"cpu": -1.0, "ram_pct": -1.0}
+
+    def stop(self): self._running = False
+
+    def _loop(self):
+        while self._running:
+            try:
+                cpu = psutil.cpu_percent(interval=None) # Use interval=None for non-blocking
+                ram = psutil.virtual_memory()
+                ram_pct = ram.percent
+                ram_total = ram.total / (1024**3) # in GB
+                ram_used = ram.used / (1024**3) # in GB
+                with self._lock:
+                    self._snapshot = {"cpu": cpu, "ram_pct": ram_pct, "ram_total": ram_total, "ram_used": ram_used}
+            except Exception as e:
+                print(f"Error in SystemMonitor: {e}")
+                with self._lock:
+                    self._snapshot = {"cpu": -1.0, "ram_pct": -1.0} # Indicate error
+            time.sleep(self.refresh_secs)
+
+    def get_snapshot(self):
+        with self._lock:
+            return dict(self._snapshot)
+
+system_monitor = SystemMonitor()
+
+
+# =================================================================================
 # 6.9 UI HELPERS (icons, tooltips, weather & pomodoro views)
 # =================================================================================
 def draw_weather_icon(surface, rect, color=(255,255,255), accent=(255,255,255)):
+    """Draws the default cloud icon for the weather button."""
     icon = pygame.Surface(rect.size, pygame.SRCALPHA)
     w, h = rect.size
     pygame.draw.circle(icon, color, (int(w*0.35), int(h*0.55)), int(h*0.22))
@@ -603,6 +677,29 @@ def draw_tomato_icon(surface, rect):
     pygame.draw.polygon(icon, (40, 160, 70), [(cx-6, cy), (cx-12, cy+6), (cx, cy+4)])
     pygame.draw.polygon(icon, (40, 160, 70), [(cx+6, cy), (cx+12, cy+6), (cx, cy+4)])
     surface.blit(icon, rect.topleft)
+
+# --- NEW: Draw system monitor icon (bar graph) ---
+def draw_system_icon(surface, rect, color=(255,255,255)):
+    icon = pygame.Surface(rect.size, pygame.SRCALPHA)
+    w, h = rect.size
+    pygame.draw.rect(icon, color, (int(w*0.15), int(h*0.6), int(w*0.2), int(h*0.3)))
+    pygame.draw.rect(icon, color, (int(w*0.4), int(h*0.4), int(w*0.2), int(h*0.5)))
+    pygame.draw.rect(icon, color, (int(w*0.65), int(h*0.2), int(w*0.2), int(h*0.7)))
+    surface.blit(icon, rect.topleft)
+
+# --- NEW: Draw focus icon (eye) ---
+def draw_focus_icon(surface, rect, color=(255,255,255), active=False):
+    icon = pygame.Surface(rect.size, pygame.SRCALPHA)
+    w, h = rect.size
+    cx, cy = w//2, h//2
+    # Draw eyelid shape
+    pygame.draw.ellipse(icon, color, (int(w*0.1), int(h*0.25), int(w*0.8), int(h*0.5)), 2)
+    # Draw pupil
+    pygame.draw.circle(icon, color, (cx, cy), int(h*0.18))
+    if active: # Draw line through it
+        pygame.draw.line(icon, (255,100,100), (int(w*0.2), int(h*0.8)), (int(w*0.8), int(h*0.2)), 3)
+    surface.blit(icon, rect.topleft)
+
 
 def draw_tooltip(surface, text, anchor_rect, font, alpha, bg=(30, 32, 40), fg=(255, 255, 255)):
     if alpha <= 0: return
@@ -632,6 +729,60 @@ def draw_weather_summary_inline(surface, pos, fonts, theme_color):
     line = " • ".join(parts) if parts else "—"
     surface.blit(font_small.render(line, True, theme_color), (x, y))
 
+
+# --- NEW: Simple weather condition icon drawing ---
+def draw_simple_weather_icon(surface, rect, code, is_day):
+    """Draws a dynamic weather icon based on WeatherAPI.com condition code."""
+    icon = pygame.Surface(rect.size, pygame.SRCALPHA)
+    w, h = rect.size
+    cx, cy = w//2, h//2
+    # Colors
+    SUN = (255, 220, 0)
+    MOON = (230, 230, 240)
+    CLOUD = (210, 210, 215)
+    RAIN = (100, 150, 255)
+    
+    # Default: Clear
+    if code == 1000:
+        if is_day: # Sun
+            pygame.draw.circle(icon, SUN, (cx, cy), int(h*0.3))
+            for i in range(8):
+                angle = i * (math.pi/4)
+                x1 = cx + math.cos(angle) * h * 0.35
+                y1 = cy + math.sin(angle) * h * 0.35
+                x2 = cx + math.cos(angle) * h * 0.45
+                y2 = cy + math.sin(angle) * h * 0.45
+                pygame.draw.line(icon, SUN, (x1, y1), (x2, y2), 3)
+        else: # Moon
+            pygame.draw.circle(icon, MOON, (cx, cy), int(h*0.3))
+            pygame.draw.circle(icon, (0,0,0,0), (cx+int(w*0.1), cy-int(h*0.05)), int(h*0.25))
+
+    # Cloudy (1003, 1006, 1009, 1030, 1069, 1087)
+    elif code in [1003, 1006, 1009, 1030, 1069, 1087]:
+        pygame.draw.circle(icon, CLOUD, (int(cx*0.7), int(cy*1.1)), int(h*0.25))
+        pygame.draw.circle(icon, CLOUD, (cx, int(cy*0.9)), int(h*0.3))
+        pygame.draw.circle(icon, CLOUD, (int(cx*1.3), int(cy*1.15)), int(h*0.22))
+        pygame.draw.rect(icon, CLOUD, (int(w*0.2), int(h*0.6), int(w*0.6), int(h*0.2)), border_radius=8)
+
+    # Rain/Snow/Sleet (1063, 1066, 1072, 1150, 1153, 1168, 1171, 1180, 1183, 1186, 1189, 1192, 1195, 1198, 1201, 1204, 1207, 1240, 1243, 1246, 1249, 1252)
+    elif code >= 1063:
+        # Cloud base
+        pygame.draw.circle(icon, (180,180,185), (int(cx*0.7), int(cy*0.8)), int(h*0.25))
+        pygame.draw.circle(icon, (180,180,185), (cx, int(cy*0.7)), int(h*0.3))
+        pygame.draw.circle(icon, (180,180,185), (int(cx*1.3), int(cy*0.85)), int(h*0.22))
+        # Rain drops
+        for x in (0.35, 0.55, 0.75):
+            pygame.draw.line(icon, RAIN, (int(w*x)-3, int(h*0.82)), (int(w*x), int(h*0.95)), 3)
+            
+    # Default (Mist/Fog/etc)
+    else:
+        pygame.draw.line(icon, CLOUD, (int(w*0.2), int(h*0.4)), (int(w*0.8), int(h*0.4)), 3)
+        pygame.draw.line(icon, CLOUD, (int(w*0.2), int(h*0.6)), (int(w*0.8), int(h*0.6)), 3)
+        pygame.draw.line(icon, CLOUD, (int(w*0.2), int(h*0.8)), (int(w*0.8), int(h*0.8)), 3)
+        
+    surface.blit(icon, rect.topleft)
+
+
 def draw_weather_view(surface, theme_color, digit_color, fonts):
     """Full-screen weather card."""
     font_small, font_tiny, font_regular, font_bold, font_weather_big = fonts
@@ -651,6 +802,10 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
     if not snap.get("ok"):
         surface.blit(font_small.render(snap.get("reason","Weather unavailable"), True, (230,230,230)), (x, y))
         return
+
+    # --- MODIFIED: Added dynamic icon ---
+    icon_rect = pygame.Rect(panel.right - 130 - pad, panel.y + pad + 50, 130, 130)
+    draw_simple_weather_icon(surface, icon_rect, snap.get("condition_code"), snap.get("is_day", 1))
 
     # Big temperature
     temp = snap.get("temp"); unit = snap.get("temp_unit","°C")
@@ -689,6 +844,11 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
         try: mmdd = date_str[5:7] + "/" + date_str[8:10]
         except: mmdd = date_str
         surface.blit(font_small.render(mmdd, True, (230,230,230)), (cx, dy)); dy += 26
+        
+        # --- NEW: Mini icon ---
+        mini_icon_rect = pygame.Rect(cx + 60, dy - 20, 40, 40)
+        draw_simple_weather_icon(surface, mini_icon_rect, d.get("cond_code"), True) # Assume day for forecast
+        
         hi, lo = d.get("high"), d.get("low")
         if hi is not None and lo is not None:
             surface.blit(font_tiny.render(f"{round(hi)}/{round(lo)}{unit}", True, (210,210,210)), (cx, dy)); dy += 20
@@ -697,6 +857,7 @@ def draw_weather_view(surface, theme_color, digit_color, fonts):
             surface.blit(font_tiny.render(f"Rain {popd}%", True, (200,200,200)), (cx, dy)); dy += 18
         cond2 = d.get("cond","")
         if cond2: surface.blit(font_tiny.render(cond2, True, (190,190,190)), (cx, dy))
+
 
 # --- Pomodoro buttons/adjust state ---
 pomo_buttons = {}
@@ -902,6 +1063,66 @@ def draw_pomodoro_adjust_view(surface, theme_color, digit_color, fonts):
     pomo_adjust_buttons['save'] = save_rect
     pomo_adjust_buttons['back'] = back_rect
 
+# --- NEW: System Stats View ---
+def draw_system_view(surface, theme_color, digit_color, fonts):
+    """Full-screen system monitor card."""
+    font_small, font_tiny, font_regular, font_sys_big = fonts
+    panel = pygame.Rect(24, 70, WIDTH-48, HEIGHT-110)
+    pygame.draw.rect(surface, (35,37,45,210), panel, border_radius=16)
+    pygame.draw.rect(surface, theme_color, panel, 2, border_radius=16)
+
+    pad = 20
+    x = panel.x + pad
+    y = panel.y + pad
+
+    # Header
+    draw_text_with_shadow(surface, "System Monitor", font_regular, (255,255,255), (x, y))
+    y += 60
+
+    snap = system_monitor.get_snapshot()
+    if snap.get("cpu", -1) == -1.0:
+        surface.blit(font_small.render("Install 'psutil' to enable this view.", True, (230,230,230)), (x, y))
+        return
+        
+    cpu_pct = snap.get("cpu", 0.0)
+    ram_pct = snap.get("ram_pct", 0.0)
+    ram_used = snap.get("ram_used", 0.0)
+    ram_total = snap.get("ram_total", 0.0)
+
+    # --- CPU Section ---
+    draw_text_with_shadow(surface, "CPU", font_regular, (230,230,230), (x, y))
+    
+    cpu_str = f"{cpu_pct:.1f}%"
+    cpu_surf = font_sys_big.render(cpu_str, True, digit_color)
+    cpu_rect = cpu_surf.get_rect(topleft=(x + 100, y - 10))
+    surface.blit(cpu_surf, cpu_rect)
+    
+    y += cpu_surf.get_height() + 10
+    
+    bar_rect = pygame.Rect(x, y, panel.width - (2*pad), 30)
+    draw_progress_bar(surface, bar_rect, cpu_pct / 100.0, theme_color)
+    
+    y += 70
+    
+    # --- RAM Section ---
+    draw_text_with_shadow(surface, "RAM", font_regular, (230,230,230), (x, y))
+
+    ram_str = f"{ram_pct:.1f}%"
+    ram_surf = font_sys_big.render(ram_str, True, digit_color)
+    ram_rect = ram_surf.get_rect(topleft=(x + 100, y - 10))
+    surface.blit(ram_surf, ram_rect)
+    
+    y += ram_surf.get_height() + 10
+
+    ram_bar_rect = pygame.Rect(x, y, panel.width - (2*pad), 30)
+    draw_progress_bar(surface, ram_bar_rect, ram_pct / 100.0, theme_color)
+    
+    # Text label for RAM usage
+    ram_info_str = f"{ram_used:.1f} GB / {ram_total:.1f} GB"
+    ram_info_surf = font_small.render(ram_info_str, True, (210,210,210))
+    ram_info_rect = ram_info_surf.get_rect(midtop=(ram_bar_rect.centerx, ram_bar_rect.bottom + 10))
+    surface.blit(ram_info_surf, ram_info_rect)
+
 
 # =================================================================================
 # 7. MAIN APPLICATION
@@ -924,7 +1145,8 @@ last_frame_update_time = 0
 next_state_change_time = 0
 
 # Views & flip animation
-app_view = 'main'        # 'main' | 'settings' | 'weather' | 'pomodoro' | 'pomo_adjust'
+# --- MODIFIED: Added 'system' view ---
+app_view = 'main'        # 'main' | 'settings' | 'weather' | 'pomodoro' | 'pomo_adjust' | 'system'
 is_flipping = False
 flip_progress = 0.0
 flip_direction = 1
@@ -956,6 +1178,14 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
+        # --- NEW: Mouse Wheel for To-Do scrolling ---
+        elif event.type == pygame.MOUSEWHEEL:
+            if app_view == 'main' and tasks_area_rect.collidepoint(mouse_pos):
+                if event.y > 0: # Scroll up
+                    task_scroll_offset = max(0, task_scroll_offset - 1)
+                elif event.y < 0: # Scroll down
+                    task_scroll_offset = min(max(0, len(tasks) - MAX_TASKS_DISPLAY), task_scroll_offset + 1)
+
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if close_button_rect.collidepoint(event.pos):
                 running = False
@@ -970,6 +1200,15 @@ while running:
                 start_flip('main' if app_view in ('pomodoro','pomo_adjust') else 'pomodoro')
                 if to_view == 'pomodoro':
                     pomo_sliders_initialized = False
+                    
+            # --- NEW: System button ---
+            elif system_button_rect.collidepoint(event.pos):
+                start_flip('main' if app_view == 'system' else 'system')
+                
+            # --- NEW: Focus button ---
+            elif focus_button_rect.collidepoint(event.pos):
+                is_focus_mode = not is_focus_mode
+                save_settings()
 
             elif app_view == 'settings':
                 for name, rect in theme_buttons.items():
@@ -998,7 +1237,7 @@ while running:
                         break
 
                 if win32api and not any(r.collidepoint(event.pos) for r in pomo_buttons.values()) and \
-                   not any(r.collidepoint(event.pos) for r in [settings_button_rect, weather_button_rect, pomodoro_button_rect, close_button_rect]):
+                   not any(r.collidepoint(event.pos) for r in [settings_button_rect, weather_button_rect, pomodoro_button_rect, system_button_rect, focus_button_rect, close_button_rect]):
                     dragging, offset_x, offset_y = True, *event.pos
 
             elif app_view == 'pomo_adjust':
@@ -1028,7 +1267,15 @@ while running:
                         break
 
             elif app_view == 'main':
-                if add_task_button_rect.collidepoint(event.pos):
+                # --- NEW: Chibi petting ---
+                if chibi_rect.collidepoint(event.pos):
+                    chibi_state = 'blush'
+                    next_state_change_time = now + random.randint(4000, 6000) # Stay blushing for a bit
+                    is_in_blink_sequence = True # Force a blink
+                    blink_sequence_step = 0
+                    last_blink_time = now
+                
+                elif add_task_button_rect.collidepoint(event.pos):
                     task_input_active = not task_input_active
                     if not task_input_active and task_input_text:
                         tasks.append({'id': str(uuid.uuid4()), 'text': task_input_text, 'completed': False})
@@ -1053,11 +1300,13 @@ while running:
                                 if task['id'] == task_id:
                                     task['completed'] = not task['completed']; save_tasks(); tasks.sort(key=lambda t: t['completed']); break
                         break
-
+                
+                # --- MODIFIED: Added new buttons to drag check ---
                 if win32api and not add_task_button_rect.collidepoint(event.pos) and \
                    not input_box_rect.collidepoint(event.pos) and \
                    not any(r.collidepoint(event.pos) for r in task_rects.values()) and \
-                   not any(r.collidepoint(event.pos) for r in [settings_button_rect, weather_button_rect, pomodoro_button_rect, close_button_rect]):
+                   not chibi_rect.collidepoint(event.pos) and \
+                   not any(r.collidepoint(event.pos) for r in [settings_button_rect, weather_button_rect, pomodoro_button_rect, system_button_rect, focus_button_rect, close_button_rect]):
                     dragging, offset_x, offset_y = True, *event.pos
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -1117,8 +1366,17 @@ while running:
     # --- Render views ---
     if current_content_view == 'main':
         app_surface.blit(rounded_backgrounds[current_background_key], (0, 0))
-        draw_weather_summary_inline(app_surface, (24, 52), (font_small, font_tiny), current_theme_color)
-
+        
+        # --- MODIFIED: Focus Mode ---
+        # Calculate alpha for fading elements
+        focus_alpha = 0 if is_focus_mode else 255
+        
+        # Weather Summary
+        weather_surf = pygame.Surface((200, 30), pygame.SRCALPHA)
+        draw_weather_summary_inline(weather_surf, (0, 0), (font_small, font_tiny), current_theme_color)
+        weather_surf.set_alpha(focus_alpha)
+        app_surface.blit(weather_surf, (24, 52))
+        
         chibi_y_offset = math.sin(now * 0.001) * 5
         chibi_image = chibi_frames[chibi_state][chibi_frame_index]
         chibi_rect = chibi_image.get_rect(center=(WIDTH // 2, HEIGHT - 100 + chibi_y_offset))
@@ -1141,27 +1399,66 @@ while running:
         app_surface.blit(font_small.render(ampm_str, True, secondary_color), (time_rect.right + 10, time_rect.top + 15))
         app_surface.blit(font_small.render(seconds_str, True, secondary_color), (time_rect.right + 10, time_rect.bottom - 30))
 
-        draw_text_with_shadow(app_surface, date_str, font_regular, current_theme_color,
-                              font_regular.render(date_str, True, (0,0,0)).get_rect(center=(WIDTH//2, HEIGHT//2 + 20)).topleft)
+        # Date string (Focus Mode)
+        date_surf = pygame.Surface(font_regular.size(date_str), pygame.SRCALPHA)
+        draw_text_with_shadow(date_surf, date_str, font_regular, current_theme_color, (0,0))
+        date_surf.set_alpha(focus_alpha)
+        date_pos = font_regular.render(date_str, True, (0,0,0)).get_rect(center=(WIDTH//2, HEIGHT//2 + 20)).topleft
+        app_surface.blit(date_surf, date_pos)
 
-        # To-Do List
-        draw_text_with_shadow(app_surface, "To-Do List", font_small, (220,220,220), (50, HEIGHT // 2 + 70))
-        task_y = HEIGHT // 2 + 110; task_rects = {}
-        for task in tasks:
+        # --- MODIFIED: To-Do List with scrolling and focus mode ---
+        todo_list_surf = pygame.Surface(tasks_area_rect.size, pygame.SRCALPHA)
+        todo_list_surf.fill((0,0,0,0)) # Transparent
+        
+        draw_text_with_shadow(todo_list_surf, "To-Do List", font_small, (220,220,220), (10, 0))
+        
+        task_y = 40; task_rects = {}
+        
+        tasks_to_display = tasks[task_scroll_offset : task_scroll_offset + MAX_TASKS_DISPLAY]
+        
+        for i, task in enumerate(tasks_to_display):
             task_text_color = (150,150,150) if task['completed'] else (255,255,255)
             task_surface = font_tiny.render(task['text'], True, task_text_color)
-            task_text_rect = task_surface.get_rect(topleft=(50, task_y))
-            app_surface.blit(task_surface, task_text_rect)
+            task_text_rect = task_surface.get_rect(topleft=(10, task_y))
+            todo_list_surf.blit(task_surface, task_text_rect)
+            
             if task['completed']:
-                pygame.draw.line(app_surface, task_text_color, (task_text_rect.left, task_text_rect.centery),
+                pygame.draw.line(todo_list_surf, task_text_color, (task_text_rect.left, task_text_rect.centery),
                                  (task_text_rect.right, task_text_rect.centery), 1)
-            task_rects[task['id']] = task_text_rect
+                                 
+            # Store rects relative to the main app surface for click detection
+            global_task_rect = task_text_rect.move(tasks_area_rect.x, tasks_area_rect.y)
+            task_rects[task['id']] = global_task_rect
+            
             delete_button_rect = delete_task_icon.get_rect(midleft=(task_text_rect.right + 10, task_text_rect.centery))
-            app_surface.blit(delete_task_icon, delete_button_rect)
-            task_rects[task['id'] + '_del'] = delete_button_rect
+            todo_list_surf.blit(delete_task_icon, delete_button_rect)
+            
+            global_del_rect = delete_button_rect.move(tasks_area_rect.x, tasks_area_rect.y)
+            task_rects[task['id'] + '_del'] = global_del_rect
+            
             task_y += 30
 
-        app_surface.blit(add_task_icon, add_task_button_rect)
+        # Draw scrollbar if needed
+        if len(tasks) > MAX_TASKS_DISPLAY:
+            track_h = tasks_area_rect.height - 40
+            track_rect = pygame.Rect(tasks_area_rect.width - 12, 40, 8, track_h)
+            pygame.draw.rect(todo_list_surf, (60,60,60), track_rect, border_radius=4)
+            
+            thumb_h = max(20, (MAX_TASKS_DISPLAY / len(tasks)) * track_h)
+            thumb_y_ratio = task_scroll_offset / (len(tasks) - MAX_TASKS_DISPLAY)
+            thumb_y = track_rect.y + thumb_y_ratio * (track_h - thumb_h)
+            thumb_rect = pygame.Rect(track_rect.x, thumb_y, 8, thumb_h)
+            pygame.draw.rect(todo_list_surf, current_theme_color, thumb_rect, border_radius=4)
+
+        todo_list_surf.set_alpha(focus_alpha)
+        app_surface.blit(todo_list_surf, tasks_area_rect.topleft)
+
+        # Add task button (Focus Mode)
+        add_task_surf = pygame.Surface(add_task_button_rect.size, pygame.SRCALPHA)
+        add_task_surf.blit(add_task_icon, (0,0))
+        add_task_surf.set_alpha(focus_alpha)
+        app_surface.blit(add_task_surf, add_task_button_rect)
+
 
         if task_input_active:
             pygame.draw.rect(app_surface, (60,60,60), input_box_rect, border_radius=8)
@@ -1246,6 +1543,12 @@ while running:
         draw_weather_view(app_surface, current_theme_color, current_digit_color,
                           (font_small, font_tiny, font_regular, font_bold, font_weather_big))
 
+    # --- NEW: System view render ---
+    elif current_content_view == 'system':
+        app_surface.blit(rounded_backgrounds[current_background_key], (0,0))
+        draw_system_view(app_surface, current_theme_color, current_digit_color,
+                         (font_small, font_tiny, font_regular, font_sys_big))
+
     elif current_content_view == 'pomo_adjust':
         app_surface.blit(rounded_backgrounds[current_background_key], (0,0))
         draw_pomodoro_adjust_view(app_surface, current_theme_color, current_digit_color,
@@ -1271,10 +1574,17 @@ while running:
             distorted_surface.blit(temp_row_surface.subsurface(abs(row_offset) + row_offset, 0, anim_width, 1), (0, y))
         screen.blit(distorted_surface, ((WIDTH - anim_width)//2, 0))
 
-    # --- Top buttons + hovers ---
+    # --- MODIFIED: Draw all static UI to a separate surface to fix green glow ---
+    
+    # Create a new, fully transparent surface for the UI
+    ui_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+
+    # --- Top buttons + hovers (Hover logic is unchanged) ---
     for key, rect in [('settings', settings_button_rect),
                       ('weather',  weather_button_rect),
                       ('pomodoro', pomodoro_button_rect),
+                      ('system',   system_button_rect),
+                      ('focus',    focus_button_rect),
                       ('close',    close_button_rect)]:
         if key not in hover_targets:
             hover_targets[key] = {'scale': 1.0, 'angle': 0.0, 'tip_alpha': 0.0}
@@ -1286,38 +1596,48 @@ while running:
         hover_targets[key]['angle'] += (target_angle - hover_targets[key]['angle']) * 0.2
         hover_targets[key]['tip_alpha'] += (target_alpha - hover_targets[key]['tip_alpha']) * 0.25
 
+    # --- Draw all icons to the new ui_surface ---
     settings_icon_rot = pygame.transform.rotozoom(settings_icon, hover_targets['settings']['angle'], hover_targets['settings']['scale'])
-    screen.blit(settings_icon_rot, settings_icon_rot.get_rect(center=settings_button_rect.center))
+    ui_surface.blit(settings_icon_rot, settings_icon_rot.get_rect(center=settings_button_rect.center))
 
     if weather_png is not None:
         weather_icon_rot = pygame.transform.rotozoom(weather_png, hover_targets['weather']['angle'], hover_targets['weather']['scale'])
-        screen.blit(weather_icon_rot, weather_icon_rot.get_rect(center=weather_button_rect.center))
+        ui_surface.blit(weather_icon_rot, weather_icon_rot.get_rect(center=weather_button_rect.center))
     else:
-        draw_weather_icon(screen, weather_button_rect, color=(255,255,255))
+        draw_weather_icon(ui_surface, weather_button_rect, color=(255,255,255)) # Draw to ui_surface
 
     if pomodoro_png is not None:
         pomo_icon_rot = pygame.transform.rotozoom(pomodoro_png, hover_targets['pomodoro']['angle'], hover_targets['pomodoro']['scale'])
-        screen.blit(pomo_icon_rot, pomo_icon_rot.get_rect(center=pomodoro_button_rect.center))
+        ui_surface.blit(pomo_icon_rot, pomo_icon_rot.get_rect(center=pomodoro_button_rect.center))
     else:
-        draw_tomato_icon(screen, pomodoro_button_rect)
+        draw_tomato_icon(ui_surface, pomodoro_button_rect) # Draw to ui_surface
+        
+    draw_system_icon(ui_surface, system_button_rect) # Draw to ui_surface
+    draw_focus_icon(ui_surface, focus_button_rect, active=is_focus_mode) # Draw to ui_surface
 
     close_button_bg_color = (255, 0, 0, 200) if close_button_rect.collidepoint(mouse_pos) else (40, 42, 54, 180)
     btn_surf = pygame.Surface(close_button_rect.size, pygame.SRCALPHA)
     pygame.draw.rect(btn_surf, close_button_bg_color, btn_surf.get_rect(), border_radius=5)
-    screen.blit(btn_surf, close_button_rect.topleft)
+    ui_surface.blit(btn_surf, close_button_rect.topleft) # Draw to ui_surface
+    
     close_surf = pygame.transform.rotozoom(font_small.render("X", True, (255,255,255)),
                                            hover_targets['close']['angle'], hover_targets['close']['scale'])
-    screen.blit(close_surf, close_surf.get_rect(center=close_button_rect.center))
+    ui_surface.blit(close_surf, close_surf.get_rect(center=close_button_rect.center)) # Draw to ui_surface
 
     # Tooltips
     for key, label, rect in [
         ('settings', 'Settings', settings_button_rect),
         ('weather',  'Weather',  weather_button_rect),
         ('pomodoro', 'Pomodoro', pomodoro_button_rect),
+        ('system',   'System Stats', system_button_rect),
+        ('focus',    'Focus Mode',   focus_button_rect),
         ('close',    'Close',    close_button_rect),
     ]:
         alpha = int(hover_targets.get(key, {}).get('tip_alpha', 0))
-        draw_tooltip(screen, label, rect, font_tiny, alpha)
+        draw_tooltip(ui_surface, label, rect, font_tiny, alpha) # Draw to ui_surface
+
+    # --- Finally, blit the entire UI surface onto the main screen ---
+    screen.blit(ui_surface, (0, 0))
 
     pygame.display.flip()
     clock.tick(60)
@@ -1328,4 +1648,5 @@ while running:
 save_settings()
 save_tasks()
 if weather_service: weather_service.stop()
+if system_monitor: system_monitor.stop() # --- NEW ---
 pygame.quit()
